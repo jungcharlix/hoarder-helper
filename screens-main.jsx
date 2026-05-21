@@ -3,7 +3,7 @@
 const { useState: useStateA, useMemo: useMemoA } = React;
 
 // ───────── HOME ─────────
-function HomeScreen({ t, setTweak, onGo, onStartZone, onOpenZone, onMenu, rooms }) {
+function HomeScreen({ t, setTweak, onGo, onStartZone, onOpenZone, onMenu, rooms, user }) {
   const today = SCHEDULE[0];
   const tomorrow = SCHEDULE[1];
   const enc = ENCOURAGEMENT[t.encouragement] || ENCOURAGEMENT.warm;
@@ -44,7 +44,7 @@ function HomeScreen({ t, setTweak, onGo, onStartZone, onOpenZone, onMenu, rooms 
   return (
     <div>
       <AppBar
-        title="哈囉，慢慢"
+        title={`哈囉，${user?.name || ''}`}
         en="Take it slow"
         left={<button className="icon-btn" onClick={onMenu}><Icon.menu /></button>}
         right={<button className="icon-btn" onClick={() => onGo('reminders')}><Icon.bell /></button>}

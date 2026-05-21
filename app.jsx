@@ -26,22 +26,34 @@ function App() {
   const activeUser = users.find(u => u.id === activeUserId) || users[0];
 
   const setUsers = (next) => { setUsersState(next); saveUsers(next); };
+
+  // Keep activeUserId in a ref so setRooms/setCustomGiveaways always save to the
+  // CURRENT user — even when the calling closure was captured before a switch.
+  const activeUserIdRef = React.useRef(activeUserId);
+  React.useEffect(() => { activeUserIdRef.current = activeUserId; }, [activeUserId]);
+
   const switchUser = (id) => {
-    setActiveUserIdState(id);
+    if (id === activeUserIdRef.current) return;
+    // 1) Persist any in-flight current-user data
+    saveUserRooms(activeUserIdRef.current, rooms);
+    saveUserGiveaways(activeUserIdRef.current, customGiveaways);
+    // 2) Mark new active in localStorage + state
     setActiveUserId(id);
-    // load that user's data
-    const fresh = seedFreshUser();
-    const loadedRooms = loadUserRooms(id);
-    if (loadedRooms) {
-      for (const r of loadedRooms) for (const z of r.zones) {
-        if (!z.itemList || z.itemList.length === 0) {
-          z.itemList = seedItemsForZone(r.name, z.name, z.items || 20);
-        }
-      }
-      setRoomsState(recomputeRoomTotals(loadedRooms));
-    } else {
-      setRoomsState(fresh.rooms);
+    activeUserIdRef.current = id;
+    setActiveUserIdState(id);
+    // 3) Load new user's data
+    let loaded = loadUserRooms(id);
+    if (!loaded) {
+      const fresh = seedFreshUser();
+      loaded = fresh.rooms;
+      saveUserRooms(id, loaded);
     }
+    for (const r of loaded) for (const z of r.zones) {
+      if (!z.itemList || z.itemList.length === 0) {
+        z.itemList = seedItemsForZone(r.name, z.name, z.items || 20);
+      }
+    }
+    setRoomsState(recomputeRoomTotals(loaded));
     setCustomGiveawaysState(loadUserGiveaways(id) || []);
   };
 
@@ -84,19 +96,19 @@ function App() {
   const setRooms = (next) => {
     const fresh = recomputeRoomTotals(JSON.parse(JSON.stringify(next)));
     setRoomsState(fresh);
-    saveUserRooms(activeUserId, fresh);
+    saveUserRooms(activeUserIdRef.current, fresh);
   };
   const setCustomGiveaways = (next) => {
     setCustomGiveawaysState(next);
-    saveUserGiveaways(activeUserId, next);
+    saveUserGiveaways(activeUserIdRef.current, next);
   };
 
   const resetData = () => {
     const fresh = seedFreshUser();
     setRoomsState(fresh.rooms);
     setCustomGiveawaysState(fresh.giveaways);
-    saveUserRooms(activeUserId, fresh.rooms);
-    saveUserGiveaways(activeUserId, fresh.giveaways);
+    saveUserRooms(activeUserIdRef.current, fresh.rooms);
+    saveUserGiveaways(activeUserIdRef.current, fresh.giveaways);
   };
 
   const importBackup = (data) => {
@@ -115,7 +127,7 @@ function App() {
     saveUserGiveaways(activeUserId, data.giveaways || []);
     // Also update user profile from import (name/emoji)
     if (data.user) {
-      const updatedUsers = users.map(u => u.id === activeUserId
+      const updatedUsers = users.map(u => u.id === activeUserIdRef.current
         ? { ...u, name: data.user.name || u.name, emoji: data.user.emoji || u.emoji }
         : u);
       setUsers(updatedUsers);
@@ -147,8 +159,8 @@ function App() {
     if (view.name === 'clean') return <CleaningScreen zoneId={view.zoneId} rooms={rooms} setRooms={setRooms} customGiveaways={customGiveaways} setCustomGiveaways={setCustomGiveaways} onBack={goBack} onComplete={() => { setTab('home'); goBack(); }} />;
     if (view.name === 'reminders') return <RemindersScreen onBack={goBack} />;
     if (view.name === 'manage') return <ManageScreen rooms={rooms} setRooms={setRooms} onBack={goBack} />;
-    if (view.name === 'users') return <UsersScreen users={users} setUsers={setUsers} activeUserId={activeUserId} onSwitch={switchUser} onBack={goBack} />;
-    if (view.name === 'export') return <ExportScreen user={activeUser} rooms={rooms} giveaways={customGiveaways} onImport={importBackup} onBack={goBack} />;
+    if (view.name === 'users') return <UsersScreen key={activeUserId} users={users} setUsers={setUsers} activeUserId={activeUserId} onSwitch={switchUser} onBack={goBack} />;
+    if (view.name === 'export') return <ExportScreen user={activeUser} rooms={rooms} giveaways={customGiveaways} onImport={(d) => importBackup(d)} onBack={goBack} />;
 
     if (tab === 'home') return <HomeScreen rooms={rooms} t={t} setTweak={setTweak} user={activeUser} onGo={(n) => n === 'list' ? setTab('list') : go(n)} onStartZone={() => go('clean', { zoneId: 'living-3' })} onOpenZone={(zoneId) => go('clean', { zoneId })} onMenu={() => setMenuOpen(true)} />;
     if (tab === 'map') return <MapScreen onPickRoom={(roomId) => go('room', { roomId })} onManage={() => go('manage')} onMenu={() => setMenuOpen(true)} />;
